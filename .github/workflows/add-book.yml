@@ -1,0 +1,59 @@
+name: Add book
+
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: "MEK book page URL, or a direct .epub/.mobi/.azw3/.pdf link"
+        required: true
+      title:
+        description: "Title override (optional)"
+        required: false
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: add-book
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Calibre (for EPUB -> MOBI conversion)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends calibre
+
+      - name: Fetch and convert the book
+        env:
+          BOOK_URL: ${{ inputs.url }}
+          BOOK_TITLE: ${{ inputs.title }}
+        run: python3 add_book.py "$BOOK_URL" "$BOOK_TITLE"
+
+      - name: Commit changes
+        run: |
+          git config user.name "book-bot"
+          git config user.email "book-bot@users.noreply.github.com"
+          git add site
+          git diff --cached --quiet || git commit -m "Add book"
+          git push
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
